@@ -30,12 +30,12 @@ int main() {
         return -1;
     }
 
-    // User applications
-    sleep(4);
+    // // User applications
+    // sleep(4);
 
-    if (!start_process("/initrd/bin/pong")) {
-        return -1;
-    }
+    // if (!start_process("/initrd/bin/pong")) {
+    //     return -1;
+    // }
 
     return 0;
 }

@@ -4,7 +4,7 @@
 #include <dynpriv/dynpriv.h>
 #include <serial/serial.h>
 
-// #include <drivers/usb/xhci/xhci.h>
+#include <drivers/usb/xhci/xhci.h>
 
 namespace modules {
 pci_manager_module::pci_manager_module() : module_base("pci_manager_module") {}
@@ -28,16 +28,16 @@ bool pci_manager_module::start() {
                 continue;
             }
 
-            // auto xhc_driver = new drivers::xhci_driver();
-            // xhc_driver->attach_device(dev, true);
+            auto xhc_driver = new drivers::xhci_driver();
+            xhc_driver->attach_device(dev, true);
 
-            // task_control_block* driver_task = sched::create_unpriv_kernel_task(
-            //     reinterpret_cast<sched::task_entry_fn_t>(&pci_manager_module::_driver_thread_entry),
-            //     xhc_driver
-            // );
-            // strcpy(driver_task->name, xhc_driver->get_name().c_str());
+            task_control_block* driver_task = sched::create_unpriv_kernel_task(
+                reinterpret_cast<sched::task_entry_fn_t>(&pci_manager_module::_driver_thread_entry),
+                xhc_driver
+            );
+            strcpy(driver_task->name, xhc_driver->get_name().c_str());
 
-            // sched::scheduler::get().add_task(driver_task);
+            sched::scheduler::get().add_task(driver_task);
         }
     });
     return true;

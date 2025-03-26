@@ -102,7 +102,7 @@ void ap_startup_entry(uint64_t lapicid, uint64_t acpi_cpu_index) {
     kernel_timer::calibrate_cpu_timer(4);
 
     // Log that the cpu is now online
-    kprint("CPU %u online!\n", current->cpu);
+    // kprint("CPU %u online!\n", current->cpu);
 
     // Start local APIC timer in order to receive timer IRQs
     kernel_timer::start_cpu_periodic_timer();
