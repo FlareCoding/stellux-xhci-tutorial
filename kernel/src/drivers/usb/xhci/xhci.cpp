@@ -1,5 +1,6 @@
 #include <drivers/usb/xhci/xhci.h>
 #include <serial/serial.h>
+#include <time/time.h>
 
 namespace drivers {
 
@@ -16,6 +17,9 @@ bool xhci_driver::init_device() {
 
     _parse_capability_registers();
     _log_capability_registers();
+
+    _reset_host_controller();
+    _log_operational_registers();
 
     return true;
 }
@@ -70,5 +74,74 @@ void xhci_driver::_log_capability_registers() {
     serial::printf("    Port Indicators       : %i\n", m_port_indicators);
     serial::printf("    Light Reset Available : %i\n", m_light_reset_capability);
     serial::printf("\n");
+}
+
+void xhci_driver::_log_operational_registers() {
+    serial::printf("===== Xhci Operational Registers (0x%llx) =====\n", (uint64_t)m_op_regs);
+    serial::printf("    usbcmd     : 0x%x\n", m_op_regs->usbcmd);
+    serial::printf("    usbsts     : 0x%x\n", m_op_regs->usbsts);
+    serial::printf("    pagesize   : 0x%x\n", m_op_regs->pagesize);
+    serial::printf("    dnctrl     : 0x%x\n", m_op_regs->dnctrl);
+    serial::printf("    crcr       : 0x%llx\n", m_op_regs->crcr);
+    serial::printf("    dcbaap     : 0x%llx\n", m_op_regs->dcbaap);
+    serial::printf("    config     : 0x%x\n", m_op_regs->config);
+    serial::printf("\n");
+}
+
+bool xhci_driver::_reset_host_controller() {
+    // Make sure we clear the Run/Stop bit
+    uint32_t usbcmd = m_op_regs->usbcmd;
+    usbcmd &= ~XHCI_USBCMD_RUN_STOP;
+    m_op_regs->usbcmd = usbcmd;
+
+    // Wait for the HCHalted bit to be set
+    uint32_t timeout = 200;
+    while (!(m_op_regs->usbsts & XHCI_USBSTS_HCH)) {
+        if (--timeout == 0) {
+            serial::printf("Host controller did not halt within %ums\n", timeout);
+            return false;
+        }
+
+        msleep(1);
+    }
+
+    // Set the HC Reset bit
+    usbcmd = m_op_regs->usbcmd;
+    usbcmd |= XHCI_USBCMD_HCRESET;
+    m_op_regs->usbcmd = usbcmd;
+
+    // Wait for this bit and CNR bit to clear
+    timeout = 1000;
+    while (
+        m_op_regs->usbcmd & XHCI_USBCMD_HCRESET ||
+        m_op_regs->usbsts & XHCI_USBSTS_CNR
+    ) {
+        if (--timeout == 0) {
+            serial::printf("Host controller did not reset within %ums\n", timeout);
+            return false;
+        }
+
+        msleep(1);
+    }
+
+    msleep(50);
+
+    // Check the defaults of the operational registers
+    if (m_op_regs->usbcmd != 0)
+        return false;
+
+    if (m_op_regs->dnctrl != 0)
+        return false;
+
+    if (m_op_regs->crcr != 0)
+        return false;
+
+    if (m_op_regs->dcbaap != 0)
+        return false;
+
+    if (m_op_regs->config != 0)
+        return false;
+
+    return true;
 }
 } // namespace drivers

@@ -48,6 +48,9 @@ private:
 private:
     void _parse_capability_registers();
     void _log_capability_registers();
+    void _log_operational_registers();
+
+    bool _reset_host_controller();
 };
 } // namespace drivers
 
