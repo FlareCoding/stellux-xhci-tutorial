@@ -31,7 +31,7 @@ bool pci_manager_module::start() {
             auto xhc_driver = new drivers::xhci_driver();
             xhc_driver->attach_device(dev, true);
 
-            task_control_block* driver_task = sched::create_unpriv_kernel_task(
+            task_control_block* driver_task = sched::create_priv_kernel_task(
                 reinterpret_cast<sched::task_entry_fn_t>(&pci_manager_module::_driver_thread_entry),
                 xhc_driver
             );
