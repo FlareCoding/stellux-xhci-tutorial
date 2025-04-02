@@ -45,12 +45,22 @@ private:
     bool m_light_reset_capability;
     uint32_t m_extended_capabilities_offset;
 
+    // Device context base address array's virtual address
+    uint64_t* m_dcbaa;
+
+    // Since DCBAA stores physical addresses, we want to keep
+    // track of the virtual pointers to the output device contexts.
+    uint64_t* m_dcbaa_virtual_addresses;
+
 private:
     void _parse_capability_registers();
     void _log_capability_registers();
     void _log_operational_registers();
 
     bool _reset_host_controller();
+
+    void _configure_operational_registers();
+    void _setup_dcbaa();
 };
 } // namespace drivers
 

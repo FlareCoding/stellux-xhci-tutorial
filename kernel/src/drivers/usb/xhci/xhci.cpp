@@ -15,10 +15,17 @@ bool xhci_driver::init_device() {
     serial::printf("m_xhc_base virtual  : 0x%llx\n", m_xhc_base);
     serial::printf("m_xhc_base physical : 0x%llx\n", xhci_get_physical_addr((void*)m_xhc_base));
 
+    // Read capability registers
     _parse_capability_registers();
     _log_capability_registers();
 
-    _reset_host_controller();
+    // Reset the host controller
+    if (!_reset_host_controller()) {
+        return false;
+    }
+
+    // Setup operational registers
+    _configure_operational_registers();
     _log_operational_registers();
 
     return true;
@@ -143,5 +150,72 @@ bool xhci_driver::_reset_host_controller() {
         return false;
 
     return true;
+}
+
+void xhci_driver::_configure_operational_registers() {
+    // Enable device notifications 
+    m_op_regs->dnctrl = 0xffff;
+
+    // Configure the usbconfig field
+    m_op_regs->config = static_cast<uint32_t>(m_max_device_slots);
+
+    // Setup device context base address array and scratchpad buffers
+    _setup_dcbaa();
+
+    // Setup the command ring and write CRCR
+    // TO-DO
+}
+
+void xhci_driver::_setup_dcbaa() {
+    size_t dcbaa_size = sizeof(uintptr_t) * (m_max_device_slots + 1);
+
+    m_dcbaa = reinterpret_cast<uint64_t*>(
+        alloc_xhci_memory(dcbaa_size, XHCI_DEVICE_CONTEXT_ALIGNMENT, XHCI_DEVICE_CONTEXT_BOUNDARY)
+    );
+
+    m_dcbaa_virtual_addresses = new uint64_t[m_max_device_slots + 1];
+
+    /*
+    // xHci Spec Section 6.1 (page 404)
+
+    If the Max Scratchpad Buffers field of the HCSPARAMS2 register is > ‘0’, then
+    the first entry (entry_0) in the DCBAA shall contain a pointer to the Scratchpad
+    Buffer Array. If the Max Scratchpad Buffers field of the HCSPARAMS2 register is
+    = ‘0’, then the first entry (entry_0) in the DCBAA is reserved and shall be
+    cleared to ‘0’ by software.
+    */
+
+    // Initialize scratchpad buffer array if needed
+    if (m_max_scratchpad_buffers > 0) {
+        uint64_t* scratchpad_array = reinterpret_cast<uint64_t*>(
+            alloc_xhci_memory(
+                m_max_scratchpad_buffers * sizeof(uint64_t),
+                XHCI_DEVICE_CONTEXT_ALIGNMENT,
+                XHCI_DEVICE_CONTEXT_BOUNDARY
+            )
+        );
+        
+        // Create scratchpad pages
+        for (uint8_t i = 0; i < m_max_scratchpad_buffers; i++) {
+            void* scratchpad = alloc_xhci_memory(
+                PAGE_SIZE,
+                XHCI_SCRATCHPAD_BUFFERS_ALIGNMENT,
+                XHCI_SCRATCHPAD_BUFFERS_BOUNDARY
+            );
+            
+            uint64_t scratchpad_paddr = xhci_get_physical_addr(scratchpad);
+            scratchpad_array[i] = scratchpad_paddr;
+        }
+
+        uint64_t scratchpad_array_physical_base = xhci_get_physical_addr(scratchpad_array);
+
+        // Set the first slot in the DCBAA to point to the scratchpad array
+        m_dcbaa[0] = scratchpad_array_physical_base;
+
+        m_dcbaa_virtual_addresses[0] = reinterpret_cast<uint64_t>(scratchpad_array);
+    }
+
+    // Set DCBAA pointer in the operational registers
+    m_op_regs->dcbaap = xhci_get_physical_addr(m_dcbaa);
 }
 } // namespace drivers
