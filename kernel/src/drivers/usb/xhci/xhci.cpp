@@ -163,7 +163,10 @@ void xhci_driver::_configure_operational_registers() {
     _setup_dcbaa();
 
     // Setup the command ring and write CRCR
-    // TO-DO
+    m_command_ring = kstl::shared_ptr<xhci_command_ring>(
+        new xhci_command_ring(XHCI_COMMAND_RING_TRB_COUNT)
+    );
+    m_op_regs->crcr = m_command_ring->get_physical_base() | m_command_ring->get_cycle_bit();
 }
 
 void xhci_driver::_setup_dcbaa() {

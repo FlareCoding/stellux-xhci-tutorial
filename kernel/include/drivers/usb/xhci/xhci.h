@@ -2,6 +2,7 @@
 #define XHCI_H
 #include <drivers/pci_device_driver.h>
 #include <drivers/usb/xhci/xhci_regs.h>
+#include <drivers/usb/xhci/xhci_rings.h>
 
 namespace drivers {
 
@@ -51,6 +52,9 @@ private:
     // Since DCBAA stores physical addresses, we want to keep
     // track of the virtual pointers to the output device contexts.
     uint64_t* m_dcbaa_virtual_addresses;
+
+    // Main command ring
+    kstl::shared_ptr<xhci_command_ring> m_command_ring;
 
 private:
     void _parse_capability_registers();
