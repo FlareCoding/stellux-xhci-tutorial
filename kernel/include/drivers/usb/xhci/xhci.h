@@ -21,8 +21,9 @@ public:
 private:
     uintptr_t m_xhc_base;
 
-    volatile xhci_capability_registers* m_cap_regs;
+    volatile xhci_capability_registers*  m_cap_regs;
     volatile xhci_operational_registers* m_op_regs;
+    volatile xhci_runtime_registers*     m_runtime_regs;
 
     // CAPLENGTH
     uint8_t m_capability_regs_length;
@@ -65,6 +66,9 @@ private:
 
     void _configure_operational_registers();
     void _setup_dcbaa();
+
+    void _configure_runtime_registers();
+    void _acknowledge_irq(uint8_t interrupter);
 };
 } // namespace drivers
 

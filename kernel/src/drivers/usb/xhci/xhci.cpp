@@ -28,6 +28,9 @@ bool xhci_driver::init_device() {
     _configure_operational_registers();
     _log_operational_registers();
 
+    // Setup runtime registers
+    _configure_runtime_registers();
+
     return true;
 }
 
@@ -63,6 +66,9 @@ void xhci_driver::_parse_capability_registers() {
 
     // Update the base pointer to operational register set
     m_op_regs = reinterpret_cast<volatile xhci_operational_registers*>(m_xhc_base + m_capability_regs_length);
+
+    // Update the base pointer to the runtime register set
+    m_runtime_regs = reinterpret_cast<volatile xhci_runtime_registers*>(m_xhc_base + m_cap_regs->rtsoff);
 }
 
 void xhci_driver::_log_capability_registers() {
@@ -220,5 +226,39 @@ void xhci_driver::_setup_dcbaa() {
 
     // Set DCBAA pointer in the operational registers
     m_op_regs->dcbaap = xhci_get_physical_addr(m_dcbaa);
+}
+
+void xhci_driver::_configure_runtime_registers() {
+    // Get the primary interrupter registers
+    volatile xhci_interrupter_registers* interrupter_regs = &m_runtime_regs->ir[0];
+
+    // Enable interrupts
+    uint32_t iman = interrupter_regs->iman;
+    iman |= XHCI_IMAN_INTERRUPT_ENABLE;
+    interrupter_regs->iman = iman;
+
+    // Setup the event ring and write to interrupter
+    // registers to set ERSTSZ, ERSDP, and ERSTBA.
+    // TO-DO
+
+    // Clear any pending interrupts for primary interrupter
+    _acknowledge_irq(0);
+}
+
+void xhci_driver::_acknowledge_irq(uint8_t interrupter) {
+    // Get the interrupter registers
+    volatile xhci_interrupter_registers* interrupter_regs = &m_runtime_regs->ir[interrupter];
+
+    // Read the current value of IMAN
+    uint32_t iman = interrupter_regs->iman;
+
+    // Set the IP bit to '1' to clear it, preserve other bits including IE
+    iman |= XHCI_IMAN_INTERRUPT_PENDING;
+
+    // Write back to IMAN
+    interrupter_regs->iman = iman;
+
+    // Clear the EINT bit in USBSTS by writing '1' to it
+    m_op_regs->usbsts = XHCI_USBSTS_EINT;
 }
 } // namespace drivers
