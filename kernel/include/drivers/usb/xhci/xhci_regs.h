@@ -2,6 +2,15 @@
 #define XHCI_REGS_H
 #include "xhci_mem.h"
 
+/*
+// xHci Spec Section 5.3 Table 5-9: eXtensible Host Controller Capability Registers (page 346)
+
+These registers specify the limits and capabilities of the host controller
+implementation.
+All Capability Registers are Read-Only (RO). The offsets for these registers are
+all relative to the beginning of the host controller’s MMIO address space. The
+beginning of the host controller’s MMIO address space is referred to as “Base”.
+*/
 struct xhci_capability_registers {
     const uint8_t caplength;    // Capability Register Length
     const uint8_t reserved0;
@@ -16,6 +25,20 @@ struct xhci_capability_registers {
 };
 static_assert(sizeof(xhci_capability_registers) == 32);
 
+/*
+// xHci Spec Section 5.4 Table 5-18: Host Controller Operational Registers (page 356)
+
+The base address of this register space is referred to as Operational Base.
+The Operational Base shall be Dword aligned and is calculated by adding the
+value of the Capability Registers Length (CAPLENGTH) register (refer to Section
+5.3.1) to the Capability Base address. All registers are multiples of 32 bits in
+length.
+Unless otherwise stated, all registers should be accessed as a 32-bit width on
+reads with an appropriate software mask, if needed. A software
+read/modify/write mechanism should be invoked for partial writes.
+These registers are located at a positive offset from the Capabilities Registers
+(refer to Section 5.3).
+*/
 struct xhci_operational_registers {
     uint32_t usbcmd;        // USB Command
     uint32_t usbsts;        // USB Status
