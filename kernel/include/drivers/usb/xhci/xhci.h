@@ -57,6 +57,9 @@ private:
     // Main command ring
     kstl::shared_ptr<xhci_command_ring> m_command_ring;
 
+    // Main event ring
+    kstl::shared_ptr<xhci_event_ring> m_event_ring;
+
 private:
     void _parse_capability_registers();
     void _log_capability_registers();

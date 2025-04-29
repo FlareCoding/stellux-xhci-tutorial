@@ -239,7 +239,13 @@ void xhci_driver::_configure_runtime_registers() {
 
     // Setup the event ring and write to interrupter
     // registers to set ERSTSZ, ERSDP, and ERSTBA.
-    // TO-DO
+    m_event_ring = kstl::shared_ptr<xhci_event_ring>(
+        new xhci_event_ring(XHCI_EVENT_RING_TRB_COUNT, interrupter_regs)
+    );
+
+    serial::printf("ERSTSZ  : 0x%llx\n", interrupter_regs->erstsz);
+    serial::printf("ERSTBA  : 0x%llx\n", interrupter_regs->erstba);
+    serial::printf("ERDP    : 0x%llx\n", interrupter_regs->erdp);
 
     // Clear any pending interrupts for primary interrupter
     _acknowledge_irq(0);
