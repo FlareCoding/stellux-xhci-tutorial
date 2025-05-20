@@ -35,7 +35,16 @@ bool xhci_driver::init_device() {
 }
 
 bool xhci_driver::start_device() {
-    serial::printf("xhci start device!\n");
+    serial::printf("usbsts before : 0x%x\n", m_op_regs->usbsts);
+
+    // At this point the controller is all setup so we can start it
+    if (!_start_host_controller()) {
+        serial::printf("Failed to start the host controller\n");
+        return false;
+    }
+
+    serial::printf("usbsts after  : 0x%x\n", m_op_regs->usbsts);
+
     return true;
 }
 
@@ -155,6 +164,35 @@ bool xhci_driver::_reset_host_controller() {
     if (m_op_regs->config != 0)
         return false;
 
+    return true;
+}
+
+bool xhci_driver::_start_host_controller() {
+    // Ensure USBCMD bits for RUN/STOP are properly set
+    uint32_t usbcmd = m_op_regs->usbcmd;
+    usbcmd |= XHCI_USBCMD_RUN_STOP;
+    usbcmd |= XHCI_USBCMD_INTERRUPTER_ENABLE;
+    usbcmd |= XHCI_USBCMD_HOSTSYS_ERROR_ENABLE;
+    m_op_regs->usbcmd = usbcmd;
+
+    // Ensure the controller transitions out of the halted state
+    constexpr int max_retries = 1000;
+    int retries = 0;
+
+    while (m_op_regs->usbsts & XHCI_USBSTS_HCH) {
+        if (retries++ >= max_retries) {
+            // Timeout: Controller failed to start
+            return false;
+        }
+        msleep(1); // Poll every 1 ms for responsiveness
+    }
+
+    // Verify CNR (Controller Not Ready) bit is clear
+    if (m_op_regs->usbsts & XHCI_USBSTS_CNR) {
+        return false; // Controller is not ready
+    }
+
+    // Controller started successfully
     return true;
 }
 

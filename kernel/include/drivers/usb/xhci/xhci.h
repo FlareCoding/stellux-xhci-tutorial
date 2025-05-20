@@ -66,6 +66,7 @@ private:
     void _log_operational_registers();
 
     bool _reset_host_controller();
+    bool _start_host_controller();
 
     void _configure_operational_registers();
     void _setup_dcbaa();
