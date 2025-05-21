@@ -36,6 +36,7 @@ bool xhci_driver::init_device() {
 
 bool xhci_driver::start_device() {
     serial::printf("usbsts before : 0x%x\n", m_op_regs->usbsts);
+    _log_usbsts();
 
     // At this point the controller is all setup so we can start it
     if (!_start_host_controller()) {
@@ -43,7 +44,10 @@ bool xhci_driver::start_device() {
         return false;
     }
 
+    serial::printf("Controller started!\n\n");
+
     serial::printf("usbsts after  : 0x%x\n", m_op_regs->usbsts);
+    _log_usbsts();
 
     return true;
 }
@@ -107,6 +111,21 @@ void xhci_driver::_log_operational_registers() {
     serial::printf("    crcr       : 0x%llx\n", m_op_regs->crcr);
     serial::printf("    dcbaap     : 0x%llx\n", m_op_regs->dcbaap);
     serial::printf("    config     : 0x%x\n", m_op_regs->config);
+    serial::printf("\n");
+}
+
+void xhci_driver::_log_usbsts() {
+    uint32_t status = m_op_regs->usbsts;
+    serial::printf("===== USBSTS =====\n");
+    if (status & XHCI_USBSTS_HCH)  serial::printf("    Host Controlled Halted\n");
+    if (status & XHCI_USBSTS_HSE)  serial::printf("    Host System Error\n");
+    if (status & XHCI_USBSTS_EINT) serial::printf("    Event Interrupt\n");
+    if (status & XHCI_USBSTS_PCD)  serial::printf("    Port Change Detect\n");
+    if (status & XHCI_USBSTS_SSS)  serial::printf("    Save State Status\n");
+    if (status & XHCI_USBSTS_RSS)  serial::printf("    Restore State Status\n");
+    if (status & XHCI_USBSTS_SRE)  serial::printf("    Save/Restore Error\n");
+    if (status & XHCI_USBSTS_CNR)  serial::printf("    Controller Not Ready\n");
+    if (status & XHCI_USBSTS_HCE)  serial::printf("    Host Controller Error\n");
     serial::printf("\n");
 }
 

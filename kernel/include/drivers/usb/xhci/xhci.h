@@ -65,6 +65,8 @@ private:
     void _log_capability_registers();
     void _log_operational_registers();
 
+    void _log_usbsts();
+
     bool _reset_host_controller();
     bool _start_host_controller();
 
