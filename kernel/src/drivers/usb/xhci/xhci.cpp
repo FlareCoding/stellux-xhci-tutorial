@@ -31,13 +31,19 @@ bool xhci_driver::init_device() {
     // Setup runtime registers
     _configure_runtime_registers();
 
+    // Register the xhci host controller IRQ handler
+    if (m_irq_vector != 0) {
+        if (!register_irq_handler(m_irq_vector, reinterpret_cast<irq_handler_t>(_xhci_irq_handler), false, static_cast<void*>(this))) {
+            serial::printf("Failed to register xhci handler at IRQ%i\n\n", m_irq_vector - IRQ0);
+        } else {
+            serial::printf("Registered xhci handler at IRQ%i\n\n", m_irq_vector - IRQ0);
+        }
+    }
+
     return true;
 }
 
 bool xhci_driver::start_device() {
-    serial::printf("usbsts before : 0x%x\n", m_op_regs->usbsts);
-    _log_usbsts();
-
     // At this point the controller is all setup so we can start it
     if (!_start_host_controller()) {
         serial::printf("Failed to start the host controller\n");
@@ -46,14 +52,40 @@ bool xhci_driver::start_device() {
 
     serial::printf("Controller started!\n\n");
 
-    serial::printf("usbsts after  : 0x%x\n", m_op_regs->usbsts);
-    _log_usbsts();
+    xhci_trb_t trb;
+    zeromem(&trb, sizeof(xhci_trb_t));
+    trb.trb_type = XHCI_TRB_TYPE_ENABLE_SLOT_CMD;
+
+    m_command_ring->enqueue(&trb);
+
+    m_doorbell_manager->ring_command_doorbell();
 
     return true;
 }
 
 bool xhci_driver::shutdown_device() {
     return true;
+}
+
+irqreturn_t xhci_driver::_xhci_irq_handler(void*, xhci_driver* driver) {
+    // Poll the event ring for the command completion event
+    kstl::vector<xhci_trb_t*> events;
+    if (driver->m_event_ring->has_unprocessed_events()) {
+        driver->m_event_ring->dequeue_events(events);
+    }
+
+    for (size_t i = 0; i < events.size(); i++) {
+        serial::printf("EventRing[%i].status = 0x%x\n", i, events[i]->status);
+    }
+    serial::printf("\n");
+
+    driver->_acknowledge_irq(0);
+
+    // Acknowledge the interrupt
+    irq_send_eoi();
+
+    // Return indicating that the interrupt was handled successfully
+    return IRQ_HANDLED;
 }
 
 void xhci_driver::_parse_capability_registers() {
@@ -82,6 +114,11 @@ void xhci_driver::_parse_capability_registers() {
 
     // Update the base pointer to the runtime register set
     m_runtime_regs = reinterpret_cast<volatile xhci_runtime_registers*>(m_xhc_base + m_cap_regs->rtsoff);
+
+    // Construct a manager class instance for the doorbell register array
+    m_doorbell_manager = kstl::shared_ptr<xhci_doorbell_manager>(
+        new xhci_doorbell_manager(m_xhc_base + m_cap_regs->dboff)
+    );
 }
 
 void xhci_driver::_log_capability_registers() {
@@ -299,10 +336,6 @@ void xhci_driver::_configure_runtime_registers() {
     m_event_ring = kstl::shared_ptr<xhci_event_ring>(
         new xhci_event_ring(XHCI_EVENT_RING_TRB_COUNT, interrupter_regs)
     );
-
-    serial::printf("ERSTSZ  : 0x%llx\n", interrupter_regs->erstsz);
-    serial::printf("ERSTBA  : 0x%llx\n", interrupter_regs->erstba);
-    serial::printf("ERDP    : 0x%llx\n", interrupter_regs->erdp);
 
     // Clear any pending interrupts for primary interrupter
     _acknowledge_irq(0);

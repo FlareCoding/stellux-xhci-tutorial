@@ -87,4 +87,54 @@ struct xhci_runtime_registers {
     xhci_interrupter_registers ir[1024];    // Interrupter Register Sets (offset 0020h to 8000h)
 };
 
+/*
+// xHci Spec Section 5.6 Figure 5-29: Doorbell Register (page 394)
+
+The Doorbell Array is organized as an array of up to 256 Doorbell Registers.
+One 32-bit Doorbell Register is defined in the array for each Device Slot.
+System software utilizes the Doorbell Register to notify the xHC that it has
+Device Slot related work for the xHC to perform.
+The number of Doorbell Registers implemented by a particular instantiation of a
+host controller is documented in the Number of Device Slots (MaxSlots) field of
+the HCSPARAMS1 register (section 5.3.3).
+These registers are pointed to by the Doorbell Offset Register (DBOFF) in the
+xHC Capability register space. The Doorbell Array base address shall be Dword
+aligned and is calculated by adding the value in the DBOFF register (section
+5.3.7) to “Base” (the base address of the xHCI Capability register address
+space).
+
+All registers are 32 bits in length. Software should read and write these
+registers using only Dword accesses
+
+Note: Software shall not write the Doorbell of an endpoint until after it has issued a
+Configure Endpoint Command for the endpoint and received a successful
+Command Completion Event.
+*/
+struct xhci_doorbell_register {
+    union {
+        struct {
+            uint8_t     db_target;
+            uint8_t     rsvd;
+            uint16_t    db_stream_id;
+        };
+
+        // Must be accessed using 32-bit dwords
+        uint32_t raw;
+    };
+} __attribute__((packed));
+
+class xhci_doorbell_manager {
+public:
+    xhci_doorbell_manager(uintptr_t base);
+
+    // TargeValue = 2 + (ZeroBasedEndpoint * 2) + (isOutEp ? 0 : 1)
+    void ring_doorbell(uint8_t doorbell, uint8_t target);
+
+    void ring_command_doorbell();
+    void ring_control_endpoint_doorbell(uint8_t doorbell);
+
+private:
+    xhci_doorbell_register* m_doorbell_registers;
+};
+
 #endif // XHCI_REGS_H

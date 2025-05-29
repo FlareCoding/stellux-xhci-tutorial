@@ -60,7 +60,12 @@ private:
     // Main event ring
     kstl::shared_ptr<xhci_event_ring> m_event_ring;
 
+    // Doorbell register array manager
+    kstl::shared_ptr<xhci_doorbell_manager> m_doorbell_manager;
+
 private:
+    static irqreturn_t _xhci_irq_handler(void*, xhci_driver* driver);
+
     void _parse_capability_registers();
     void _log_capability_registers();
     void _log_operational_registers();
