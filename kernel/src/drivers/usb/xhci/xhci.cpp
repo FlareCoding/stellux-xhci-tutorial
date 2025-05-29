@@ -56,9 +56,11 @@ bool xhci_driver::start_device() {
     zeromem(&trb, sizeof(xhci_trb_t));
     trb.trb_type = XHCI_TRB_TYPE_ENABLE_SLOT_CMD;
 
-    m_command_ring->enqueue(&trb);
-
-    m_doorbell_manager->ring_command_doorbell();
+    xhci_command_completion_trb_t* completion_trb = _send_command_trb(&trb);
+    if (completion_trb) {
+        serial::printf("Completion TRB, completion code:0x%x  cycle bit:%u\n",
+            completion_trb->completion_code, completion_trb->cycle_bit);
+    }
 
     return true;
 }
@@ -68,17 +70,7 @@ bool xhci_driver::shutdown_device() {
 }
 
 irqreturn_t xhci_driver::_xhci_irq_handler(void*, xhci_driver* driver) {
-    // Poll the event ring for the command completion event
-    kstl::vector<xhci_trb_t*> events;
-    if (driver->m_event_ring->has_unprocessed_events()) {
-        driver->m_event_ring->dequeue_events(events);
-    }
-
-    for (size_t i = 0; i < events.size(); i++) {
-        serial::printf("EventRing[%i].status = 0x%x\n", i, events[i]->status);
-    }
-    serial::printf("\n");
-
+    driver->_process_events();
     driver->_acknowledge_irq(0);
 
     // Acknowledge the interrupt
@@ -86,6 +78,30 @@ irqreturn_t xhci_driver::_xhci_irq_handler(void*, xhci_driver* driver) {
 
     // Return indicating that the interrupt was handled successfully
     return IRQ_HANDLED;
+}
+
+void xhci_driver::_process_events() {
+    // Poll the event ring for the command completion event
+    kstl::vector<xhci_trb_t*> events;
+    if (m_event_ring->has_unprocessed_events()) {
+        m_event_ring->dequeue_events(events);
+    }
+
+    uint8_t command_completion_status = 0;
+
+    for (size_t i = 0; i < events.size(); i++) {
+        xhci_trb_t* event = events[i];
+        switch (event->trb_type) {
+        case XHCI_TRB_TYPE_CMD_COMPLETION_EVENT: {
+            command_completion_status = 1;
+            m_command_completion_events.push_back((xhci_command_completion_trb_t*)event);
+            break;
+        }
+        default: break;
+        }
+    }
+
+    m_command_irq_completed = command_completion_status;
 }
 
 void xhci_driver::_parse_capability_registers() {
@@ -356,5 +372,45 @@ void xhci_driver::_acknowledge_irq(uint8_t interrupter) {
 
     // Clear the EINT bit in USBSTS by writing '1' to it
     m_op_regs->usbsts = XHCI_USBSTS_EINT;
+}
+
+xhci_command_completion_trb_t* xhci_driver::_send_command_trb(xhci_trb_t* cmd_trb, uint32_t timeout_ms) {
+    // Enqueue the TRB
+    m_command_ring->enqueue(cmd_trb);
+
+    // Ring the command doorbell
+    m_doorbell_manager->ring_command_doorbell();
+
+    // Wait for the IRQ and let the host controller process the command
+    uint64_t sleep_passed = 0;
+    while (!m_command_irq_completed) {
+        usleep(10);
+        sleep_passed += 10;
+
+        if (sleep_passed > timeout_ms * 1000) {
+            break;
+        }
+    }
+
+    // ** Important Assumption **
+    //  - Only one command is being sent to the controller at a time
+    xhci_command_completion_trb_t* completion_trb =
+        m_command_completion_events.size() ? m_command_completion_events[0] : nullptr;
+
+    // Reset the irq flag and clear out the command completion event queue
+    m_command_completion_events.clear();
+    m_command_irq_completed = 0;
+
+    if (!completion_trb) {
+        serial::printf("Failed to find completion TRB for command %i\n", cmd_trb->trb_type);
+        return nullptr;
+    }
+
+    if (completion_trb->completion_code != XHCI_TRB_COMPLETION_CODE_SUCCESS) {
+        serial::printf("Command TRB failed with error: %s\n", trb_completion_code_to_string(completion_trb->completion_code));
+        return nullptr;
+    }
+
+    return completion_trb;
 }
 } // namespace drivers

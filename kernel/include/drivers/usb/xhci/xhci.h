@@ -63,8 +63,15 @@ private:
     // Doorbell register array manager
     kstl::shared_ptr<xhci_doorbell_manager> m_doorbell_manager;
 
+    // Command completion events
+    kstl::vector<xhci_command_completion_trb_t*> m_command_completion_events;
+
+    // Flag indicating we have a command completion event
+    volatile uint8_t m_command_irq_completed = 0;
+
 private:
     static irqreturn_t _xhci_irq_handler(void*, xhci_driver* driver);
+    void _process_events();
 
     void _parse_capability_registers();
     void _log_capability_registers();
@@ -80,6 +87,8 @@ private:
 
     void _configure_runtime_registers();
     void _acknowledge_irq(uint8_t interrupter);
+
+    xhci_command_completion_trb_t* _send_command_trb(xhci_trb_t* cmd_trb, uint32_t timeout_ms = 200);
 };
 } // namespace drivers
 
