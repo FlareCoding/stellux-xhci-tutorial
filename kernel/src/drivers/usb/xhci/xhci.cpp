@@ -56,10 +56,12 @@ bool xhci_driver::start_device() {
     zeromem(&trb, sizeof(xhci_trb_t));
     trb.trb_type = XHCI_TRB_TYPE_ENABLE_SLOT_CMD;
 
-    xhci_command_completion_trb_t* completion_trb = _send_command_trb(&trb);
-    if (completion_trb) {
-        serial::printf("Completion TRB, completion code:0x%x  cycle bit:%u\n",
-            completion_trb->completion_code, completion_trb->cycle_bit);
+    for (int i = 0; i < 6; i++) {
+        xhci_command_completion_trb_t* completion_trb = _send_command_trb(&trb);
+        if (completion_trb) {
+            serial::printf("Completion TRB, completion code:0x%x  slot_id:%u\n",
+                completion_trb->completion_code, completion_trb->slot_id);
+        }
     }
 
     return true;
