@@ -2,6 +2,7 @@
 #define XHCI_H
 #include <drivers/pci_device_driver.h>
 #include <drivers/usb/xhci/xhci_regs.h>
+#include <drivers/usb/xhci/xhci_ext_cap.h>
 #include <drivers/usb/xhci/xhci_rings.h>
 
 namespace drivers {
@@ -24,6 +25,9 @@ private:
     volatile xhci_capability_registers*  m_cap_regs;
     volatile xhci_operational_registers* m_op_regs;
     volatile xhci_runtime_registers*     m_runtime_regs;
+
+    // Linked list of extended capabilities
+    kstl::shared_ptr<xhci_extended_capability> m_extended_capabilities_head;
 
     // CAPLENGTH
     uint8_t m_capability_regs_length;
@@ -69,15 +73,23 @@ private:
     // Flag indicating we have a command completion event
     volatile uint8_t m_command_irq_completed = 0;
 
+    // USB3.x-specific ports (0-based)
+    kstl::vector<uint8_t> m_usb3_ports;
+
 private:
     static irqreturn_t _xhci_irq_handler(void*, xhci_driver* driver);
     void _process_events();
 
     void _parse_capability_registers();
+    void _parse_extended_capability_registers();
+
     void _log_capability_registers();
     void _log_operational_registers();
 
     void _log_usbsts();
+
+    // Check if 0-based port_num is part of the USB3 port register set
+    bool _is_usb3_port(uint8_t port_num);
 
     bool _reset_host_controller();
     bool _start_host_controller();

@@ -137,4 +137,91 @@ private:
     xhci_doorbell_register* m_doorbell_registers;
 };
 
+/*
+// xHci Spec Section 7.0 Table 7-1: Format of xHCI Extended Capability Pointer Register
+
+The xHC exports xHCI-specific extended capabilities utilizing a method similar to
+the PCI extended capabilities. If an xHC implements any extended capabilities, it
+specifies a non-zero value in the xHCI Extended Capabilities Pointer (xECP) field
+of the HCCPARAMS1 register (5.3.6). This value is an offset into xHC MMIO space
+from the Base, where the Base is the beginning of the host controller’s MMIO
+address space. Each capability register has the format illustrated in Table 7-1
+*/
+struct xhci_extended_capability_entry {
+    union {
+        struct {
+            /*
+                This field identifies the xHCI Extended capability.
+                Refer to Table 7-2 for a list of the valid xHCI extended capabilities.
+            */
+            uint8_t id;
+
+            /*
+                This field points to the xHC MMIO space offset of
+                the next xHCI extended capability pointer. A value of 00h indicates the end of the extended
+                capability list. A non-zero value in this register indicates a relative offset, in Dwords, from this
+                Dword to the beginning of the next extended capability.
+                
+                For example, assuming an effective address of this data structure is 350h and assuming a
+                pointer value of 068h, we can calculate the following effective address:
+                350h + (068h << 2) -> 350h + 1A0h -> 4F0h
+            */
+            uint8_t next;
+
+            /*
+                The definition and attributes of these bits depends on the specific capability.
+            */
+           uint16_t cap_specific;
+        };
+
+        // Extended capability entries must be read as 32-bit words
+        uint32_t raw;
+    };
+};
+static_assert(sizeof(xhci_extended_capability_entry) == 4);
+
+/*
+// xHci Spec Section 7.0 Table 7-1: Format of xHCI Extended Capability Pointer Register
+*/
+#define XHCI_NEXT_EXT_CAP_PTR(ptr, next) (volatile uint32_t*)((char*)ptr + (next * sizeof(uint32_t)))
+
+/*
+// xHci Spec Section 7.0 Table 7-2: xHCI Extended Capability Codes
+*/
+enum class xhci_extended_capability_code {
+    reserved                            = 0,
+    usb_legacy_support                  = 1,
+    supported_protocol                  = 2,
+    extended_power_management           = 3,
+    iovirtualization_support            = 4,
+    message_interrupt_support           = 5,
+    local_memory_support                = 6,
+    usb_debug_capability_support        = 10,
+    extended_message_interrupt_support  = 17
+};
+
+class xhci_extended_capability {
+public:
+    xhci_extended_capability(volatile uint32_t* cap_ptr);
+
+    inline volatile uint32_t* base() const { return m_base; }
+    
+    inline xhci_extended_capability_code id() const {
+        return static_cast<xhci_extended_capability_code>(m_entry.id);
+    }
+
+    inline kstl::shared_ptr<xhci_extended_capability> next() const { return m_next; }
+
+private:
+    volatile uint32_t* m_base;
+    xhci_extended_capability_entry m_entry;
+
+    kstl::shared_ptr<xhci_extended_capability> m_next;
+
+private:
+    void _read_next_ext_caps();
+};
+
+const char* xhci_extended_capability_to_string(xhci_extended_capability_code capid);
+
 #endif // XHCI_REGS_H

@@ -19,6 +19,9 @@ bool xhci_driver::init_device() {
     _parse_capability_registers();
     _log_capability_registers();
 
+    // Parse the extended capabilities
+    _parse_extended_capability_registers();
+
     // Reset the host controller
     if (!_reset_host_controller()) {
         return false;
@@ -52,16 +55,8 @@ bool xhci_driver::start_device() {
 
     serial::printf("Controller started!\n\n");
 
-    xhci_trb_t trb;
-    zeromem(&trb, sizeof(xhci_trb_t));
-    trb.trb_type = XHCI_TRB_TYPE_ENABLE_SLOT_CMD;
-
-    for (int i = 0; i < 6; i++) {
-        xhci_command_completion_trb_t* completion_trb = _send_command_trb(&trb);
-        if (completion_trb) {
-            serial::printf("Completion TRB, completion code:0x%x  slot_id:%u\n",
-                completion_trb->completion_code, completion_trb->slot_id);
-        }
+    for (uint8_t port = 0; port < m_max_ports; port++) {
+        serial::printf("Port %u is USB%u\n", port, _is_usb3_port(port) ? 3 : 2);
     }
 
     return true;
@@ -139,6 +134,36 @@ void xhci_driver::_parse_capability_registers() {
     );
 }
 
+void xhci_driver::_parse_extended_capability_registers() {
+    volatile uint32_t* head_cap_ptr = reinterpret_cast<volatile uint32_t*>(
+        m_xhc_base + m_extended_capabilities_offset
+    );
+
+    m_extended_capabilities_head = kstl::shared_ptr<xhci_extended_capability>(
+        new xhci_extended_capability(head_cap_ptr)
+    );
+
+    auto node = m_extended_capabilities_head;
+    while (node.get()) {
+        if (node->id() == xhci_extended_capability_code::supported_protocol) {
+            xhci_usb_supported_protocol_capability cap(node->base());
+
+            // Make the ports zero-based
+            uint8_t first_port = cap.compatible_port_offset - 1;
+            uint8_t last_port = first_port + cap.compatible_port_count - 1;
+
+            if (cap.major_revision_version == 3) {
+                for (uint8_t port = first_port; port <= last_port; port++) {
+                    m_usb3_ports.push_back(port);
+                }
+            }
+        }
+
+        // Advance to the next node
+        node = node->next();
+    }
+}
+
 void xhci_driver::_log_capability_registers() {
     serial::printf("===== Xhci Capability Registers (0x%llx) =====\n", (uint64_t)m_cap_regs);
     serial::printf("    Length                : %i\n", m_capability_regs_length);
@@ -182,6 +207,16 @@ void xhci_driver::_log_usbsts() {
     if (status & XHCI_USBSTS_CNR)  serial::printf("    Controller Not Ready\n");
     if (status & XHCI_USBSTS_HCE)  serial::printf("    Host Controller Error\n");
     serial::printf("\n");
+}
+
+bool xhci_driver::_is_usb3_port(uint8_t port_num) {
+    for (size_t i = 0; i < m_usb3_ports.size(); ++i) {
+        if (m_usb3_ports[i] == port_num) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool xhci_driver::_reset_host_controller() {
