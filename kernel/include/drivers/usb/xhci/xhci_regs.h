@@ -222,6 +222,4 @@ private:
     void _read_next_ext_caps();
 };
 
-const char* xhci_extended_capability_to_string(xhci_extended_capability_code capid);
-
 #endif // XHCI_REGS_H
