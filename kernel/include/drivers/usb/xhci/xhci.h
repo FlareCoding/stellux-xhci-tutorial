@@ -88,6 +88,12 @@ private:
 
     void _log_usbsts();
 
+    // @note port number is 0-based
+    xhci_portsc_register _read_portsc_reg(uint8_t port_num);
+
+    // @note port number is 0-based
+    void _write_portsc_reg(xhci_portsc_register reg, uint8_t port_num);
+
     // Check if 0-based port_num is part of the USB3 port register set
     bool _is_usb3_port(uint8_t port_num);
 
@@ -101,6 +107,11 @@ private:
     void _acknowledge_irq(uint8_t interrupter);
 
     xhci_command_completion_trb_t* _send_command_trb(xhci_trb_t* cmd_trb, uint32_t timeout_ms = 200);
+
+    // @note port number is 0-based
+    bool _reset_port(uint8_t port_num);
+
+    const char* _usb_speed_to_string(uint8_t speed);
 };
 } // namespace drivers
 

@@ -55,8 +55,19 @@ bool xhci_driver::start_device() {
 
     serial::printf("Controller started!\n\n");
 
-    for (uint8_t port = 0; port < m_max_ports; port++) {
-        serial::printf("Port %u is USB%u\n", port, _is_usb3_port(port) ? 3 : 2);
+    for (uint8_t i = 0; i < m_max_ports; i++) {
+        xhci_portsc_register portsc = _read_portsc_reg(i);
+
+        if (portsc.csc && portsc.ccs) {
+            bool reset_successful = _reset_port(i);
+
+            if (reset_successful) {
+                serial::printf("Device connected on port %i - %s\n", i, _usb_speed_to_string(portsc.port_speed));
+                // Proceed to device setup
+            } else {
+                serial::printf("Failed to reset port %i after connection detection\n", i);
+            }
+        }
     }
 
     return true;
@@ -207,6 +218,20 @@ void xhci_driver::_log_usbsts() {
     if (status & XHCI_USBSTS_CNR)  serial::printf("    Controller Not Ready\n");
     if (status & XHCI_USBSTS_HCE)  serial::printf("    Host Controller Error\n");
     serial::printf("\n");
+}
+
+xhci_portsc_register xhci_driver::_read_portsc_reg(uint8_t port_num) {
+    uint64_t reg_base = reinterpret_cast<uint64_t>(m_op_regs) + (0x400 + (0x10 * port_num));
+    
+    xhci_portsc_register reg;
+    reg.raw = *reinterpret_cast<volatile uint32_t*>(reg_base);
+
+    return reg;
+}
+
+void xhci_driver::_write_portsc_reg(xhci_portsc_register reg, uint8_t port_num) {
+    uint64_t reg_base = reinterpret_cast<uint64_t>(m_op_regs) + (0x400 + (0x10 * port_num));
+    *reinterpret_cast<volatile uint32_t*>(reg_base) = reg.raw;
 }
 
 bool xhci_driver::_is_usb3_port(uint8_t port_num) {
@@ -450,4 +475,93 @@ xhci_command_completion_trb_t* xhci_driver::_send_command_trb(xhci_trb_t* cmd_tr
 
     return completion_trb;
 }
+
+bool xhci_driver::_reset_port(uint8_t port_num) {
+    xhci_portsc_register portsc = _read_portsc_reg(port_num);
+
+    bool is_usb3_port = _is_usb3_port(port_num);
+
+    // Power on the port if necessary
+    if (portsc.pp == 0) {
+        portsc.pp = 1;
+        _write_portsc_reg(portsc, port_num);
+        msleep(20); // Wait for power stabilization
+        portsc = _read_portsc_reg(port_num);
+
+        if (portsc.pp == 0) {
+            serial::printf("Port %i: Failed to power on port\n", port_num);
+            return false;
+        }
+    }
+
+    // Clear any lingering status change bits before initiating the reset
+    portsc.csc = 1; // Clear connect status change
+    portsc.pec = 1; // Clear port enable/disable change
+    portsc.prc = 1; // Clear port reset change
+    _write_portsc_reg(portsc, port_num);
+
+    // Initiate the port reset
+    if (is_usb3_port) {
+        portsc.wpr = 1; // Warm reset for USB 3.0
+    } else {
+        portsc.pr = 1; // Standard port reset for USB 2.0
+    }
+    _write_portsc_reg(portsc, port_num);
+
+    // Wait for the reset to complete
+    int timeout = 100;
+    while (timeout > 0) {
+        portsc = _read_portsc_reg(port_num);
+
+        if ((is_usb3_port && portsc.wrc) || (!is_usb3_port && portsc.prc)) {
+            break; // Reset has completed
+        }
+
+        timeout--;
+        msleep(1);
+    }
+
+    if (timeout == 0) {
+        serial::printf("Port %i: Port reset timed out\n", port_num);
+        return false;
+    }
+
+    msleep(3); // Give the hardware time to settle
+
+    // Clear the reset completion and status change bits
+    portsc.prc = 1; // Clear port reset change
+    portsc.wrc = 1; // Clear warm reset change (USB 3.0)
+    portsc.csc = 1; // Clear connect status change
+    portsc.pec = 1; // Clear port enable/disable change
+    portsc.ped = 0; // Don't clear the PED bit
+    _write_portsc_reg(portsc, port_num);
+
+    msleep(3);
+
+    // Re-read the register to check if the port is enabled
+    portsc = _read_portsc_reg(port_num);
+
+    // This case could happen when the port has been reset after
+    // a device disconnect event, and no device has connected since.
+    if (portsc.ped == 0) {
+        return false;
+    }
+
+    return true;
+}
+
+const char* xhci_driver::_usb_speed_to_string(uint8_t speed) {
+    static const char* speed_string[7] = {
+        "Invalid",
+        "Full Speed (12 MB/s - USB2.0)",
+        "Low Speed (1.5 Mb/s - USB 2.0)",
+        "High Speed (480 Mb/s - USB 2.0)",
+        "Super Speed (5 Gb/s - USB3.0)",
+        "Super Speed Plus (10 Gb/s - USB 3.1)",
+        "Undefined"
+    };
+
+    return speed_string[speed];
+}
+
 } // namespace drivers
