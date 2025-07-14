@@ -22,9 +22,9 @@ bool start_process(const kstl::string& name) {
 }
 
 int main() {
-    if (!start_process("/initrd/bin/shell")) {
-        return -1;
-    }
+    // if (!start_process("/initrd/bin/shell")) {
+    //     return -1;
+    // }
 
     if (!start_process("/initrd/bin/gfx_manager")) {
         return -1;
