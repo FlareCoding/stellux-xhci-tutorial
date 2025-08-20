@@ -438,7 +438,10 @@ void xhci_driver::_acknowledge_irq(uint8_t interrupter) {
 
 xhci_command_completion_trb_t* xhci_driver::_send_command_trb(xhci_trb_t* cmd_trb, uint32_t timeout_ms) {
     // Enqueue the TRB
-    m_command_ring->enqueue(cmd_trb);
+    if (!m_command_ring->enqueue(cmd_trb)) {
+        serial::printf("Failed to enqueue command. Command ring is full.");
+        return nullptr;
+    };
 
     // Ring the command doorbell
     m_doorbell_manager->ring_command_doorbell();
@@ -472,6 +475,9 @@ xhci_command_completion_trb_t* xhci_driver::_send_command_trb(xhci_trb_t* cmd_tr
         serial::printf("Command TRB failed with error: %s\n", trb_completion_code_to_string(completion_trb->completion_code));
         return nullptr;
     }
+
+    // Update the command ring dequeue pointer
+    m_command_ring->process_event(completion_trb);
 
     return completion_trb;
 }
