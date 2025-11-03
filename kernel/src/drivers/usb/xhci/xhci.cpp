@@ -63,7 +63,7 @@ bool xhci_driver::start_device() {
 
             if (reset_successful) {
                 serial::printf("Device connected on port %i - %s\n", i, _usb_speed_to_string(portsc.port_speed));
-                // Proceed to device setup
+                _setup_device(i);
             } else {
                 serial::printf("Failed to reset port %i after connection detection\n", i);
             }
@@ -568,6 +568,79 @@ const char* xhci_driver::_usb_speed_to_string(uint8_t speed) {
     };
 
     return speed_string[speed];
+}
+
+uint8_t xhci_driver::_get_port_speed(uint8_t port) {
+    xhci_portsc_register portsc = _read_portsc_reg(port);
+    return static_cast<uint8_t>(portsc.port_speed);
+}
+
+uint8_t xhci_driver::_enable_device_slot() {
+    xhci_trb_t enable_slot_trb;
+    zeromem(&enable_slot_trb, sizeof(xhci_trb_t));
+
+    enable_slot_trb.trb_type = XHCI_TRB_TYPE_ENABLE_SLOT_CMD;
+
+    auto completion_trb = _send_command_trb(&enable_slot_trb);
+    if (!completion_trb) {
+        return 0;
+    }
+
+    return completion_trb->slot_id;
+}
+
+bool xhci_driver::_create_device_context(uint8_t slot_id) {
+    // Determine the size of the device context
+    // based on the capability register parameters.
+    uint64_t device_context_size = m_64byte_context_size ? sizeof(xhci_device_context64) : sizeof(xhci_device_context32);
+
+    // Allocate a memory block for the device context
+    void* ctx = alloc_xhci_memory(
+        device_context_size,
+        XHCI_DEVICE_CONTEXT_ALIGNMENT,
+        XHCI_DEVICE_CONTEXT_BOUNDARY
+    );
+
+    if (!ctx) {
+        serial::printf("Failed to allocate memory for a device context\n");
+        return false;
+    }
+
+    // Insert the device context's physical address
+    // into the Device Context Base Addres Array (DCBAA).
+    m_dcbaa[slot_id] = xhci_get_physical_addr(ctx);
+
+    // Store the virtual address as well
+    m_dcbaa_virtual_addresses[slot_id] = reinterpret_cast<uint64_t>(ctx);
+
+    return true;
+}
+
+void xhci_driver::_setup_device(uint8_t port) {
+    uint8_t port_speed = _get_port_speed(port);
+    uint8_t port_id = port + 1;
+
+    // Allocate a device slot for the device
+    uint8_t slot_id = _enable_device_slot();
+    if (!slot_id) {
+        serial::printf("Failed to enable device slot for port %i\n", port);
+        return;
+    }
+
+    // Create a device context for the allocated slot
+    if (!_create_device_context(slot_id)) {
+        serial::printf("Failed to create device context for slot %i\n", slot_id);
+        return;
+    }
+
+    xhci_device* device = new xhci_device(port_id, slot_id, port_speed, m_64byte_context_size);
+
+    serial::printf("Allocated device:\n");
+    serial::printf("  port  - %i\n", device->get_port());
+    serial::printf("  slot  - %i\n", device->get_slot());
+    serial::printf("  speed - %s\n", _usb_speed_to_string(device->get_speed()));
+    serial::printf("  inctx - 0x%llx\n", device->get_input_ctx_dma());
+    serial::printf("\n");
 }
 
 } // namespace drivers

@@ -4,6 +4,7 @@
 #include <drivers/usb/xhci/xhci_regs.h>
 #include <drivers/usb/xhci/xhci_ext_cap.h>
 #include <drivers/usb/xhci/xhci_rings.h>
+#include <drivers/usb/xhci/xhci_device.h>
 
 namespace drivers {
 
@@ -112,6 +113,15 @@ private:
     bool _reset_port(uint8_t port_num);
 
     const char* _usb_speed_to_string(uint8_t speed);
+    uint8_t _get_port_speed(uint8_t port);
+
+    uint8_t _enable_device_slot();
+
+    // Creates a device context buffer and inserts it into DCBAA
+    bool _create_device_context(uint8_t slot_id);
+
+    // @note port is 0-based
+    void _setup_device(uint8_t port);
 };
 } // namespace drivers
 
